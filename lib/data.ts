@@ -134,6 +134,11 @@ function makeDelegate(model: ModelStatic<Model>) {
       const [count] = await model.update(cleanData({ ...args.data, updated_at: new Date() }), { where: translateWhere(args.where) ?? {} });
       return { count };
     },
+    async delete(args: QueryArgs) {
+      const where = translateWhere(args.where);
+      if (!where || !Object.keys(where).length) throw new Error("delete requires a where clause");
+      return { count: await model.destroy({ where }) };
+    },
     async count(args: QueryArgs = {}) {
       return model.count({ where: translateWhere(args.where) });
     }

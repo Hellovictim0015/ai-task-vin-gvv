@@ -3,15 +3,17 @@ import { randomBytes } from "crypto";
 import { currentUser, getPasswordHash, requireAdminOrAbove, requireProjectHeadOrAbove, requireSuperAdmin } from "./auth";
 import { addDays, dateOnly, parseReportRange, startOfToday, timeOnly, toDateString, workingDaysInclusive } from "./dates";
 import { fail, getClientIp, json, readBody } from "./http";
-import { db } from "./data";
+import { db, models } from "./data";
 import {
   addProjectMemberSchema,
+  adminResetPasswordSchema,
   broadcastSchema,
   changePasswordSchema,
   createMeetingSchema,
   createProjectSchema,
   createTaskSchema,
   createUserSchema,
+  departmentSchema,
   eodCreateSchema,
   followUpSchema,
   loginSchema,
@@ -126,12 +128,35 @@ export async function getUserById(request: Request, userId: number) {
 }
 
 export async function updateUser(request: Request, userId: number) {
-  await requireAdminOrAbove(request);
+  const actor = await requireAdminOrAbove(request);
   const body = await readBody(request, updateUserSchema);
   const existing = await db.user.findUnique({ where: { id: userId } });
   if (!existing) fail(404, "User not found");
+  const roleChanged = body.role !== undefined && body.role !== existing.role;
+  if (roleChanged) {
+    if (actor.role !== UserRole.super_admin) fail(403, "Only Super Admin can change a user's role");
+    if (existing.role === UserRole.super_admin) fail(400, "Super Admin's role cannot be changed");
+    if (body.role === UserRole.super_admin) fail(400, "Cannot assign the Super Admin role");
+  }
   const user = await db.user.update({ where: { id: userId }, data: body, include: userInclude });
+  if (roleChanged) {
+    await db.auditLog.create({
+      data: { user_id: actor.id, action: "role_changed", module: "user", detail: { target_user_id: userId, old: existing.role, new: body.role } }
+    });
+  }
   return json(serializeUser(user));
+}
+
+export async function adminResetPassword(request: Request, userId: number) {
+  const actor = await requireSuperAdmin(request);
+  const body = await readBody(request, adminResetPasswordSchema);
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) fail(404, "User not found");
+  await models.User.update({ hashed_password: await getPasswordHash(body.new_password), updated_at: new Date() }, { where: { id: userId } });
+  await db.auditLog.create({
+    data: { user_id: actor.id, action: "password_reset_by_admin", module: "user", detail: { target_user_id: userId }, ip_address: getClientIp(request) }
+  });
+  return json({ message: `Password updated for ${user.name}` });
 }
 
 export async function deactivateUser(request: Request, userId: number) {
@@ -756,7 +781,42 @@ export async function generateDailyTodoApi(request: Request) {
 }
 
 export async function listDepartments() {
-  return json(await db.department.findMany());
+  return json(await db.department.findMany({ orderBy: { name: "asc" } }));
+}
+
+export async function createDepartment(request: Request) {
+  const actor = await requireSuperAdmin(request);
+  const body = await readBody(request, departmentSchema);
+  if (await db.department.findFirst({ where: { name: body.name } })) fail(400, `Department "${body.name}" already exists`);
+  const department = await db.department.create({ data: { name: body.name } });
+  await db.auditLog.create({ data: { user_id: actor.id, action: "department_created", module: "department", detail: { department_id: department.id, name: department.name } } });
+  return json(department, 201);
+}
+
+export async function updateDepartment(request: Request, departmentId: number) {
+  const actor = await requireSuperAdmin(request);
+  const body = await readBody(request, departmentSchema);
+  const existing = await db.department.findUnique({ where: { id: departmentId } });
+  if (!existing) fail(404, "Department not found");
+  const duplicate = await db.department.findFirst({ where: { name: body.name, id: { not: departmentId } } });
+  if (duplicate) fail(400, `Department "${body.name}" already exists`);
+  await models.Department.update({ name: body.name }, { where: { id: departmentId } });
+  const department = await db.department.findUniqueOrThrow({ where: { id: departmentId } });
+  await db.auditLog.create({ data: { user_id: actor.id, action: "department_updated", module: "department", detail: { department_id: departmentId, old: existing.name, new: department.name } } });
+  return json(department);
+}
+
+export async function deleteDepartment(request: Request, departmentId: number) {
+  const actor = await requireSuperAdmin(request);
+  const existing = await db.department.findUnique({ where: { id: departmentId } });
+  if (!existing) fail(404, "Department not found");
+  const userCount = await db.user.count({ where: { department_id: departmentId } });
+  if (userCount > 0) {
+    fail(400, `Cannot delete "${existing.name}": ${userCount} ${userCount === 1 ? "user is" : "users are"} assigned to it. Move them to another department first.`);
+  }
+  await db.department.delete({ where: { id: departmentId } });
+  await db.auditLog.create({ data: { user_id: actor.id, action: "department_deleted", module: "department", detail: { department_id: departmentId, name: existing.name } } });
+  return json({ message: `Department "${existing.name}" deleted` });
 }
 
 export async function performanceByPhone(request: Request) {

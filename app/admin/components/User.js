@@ -191,7 +191,7 @@ export default function RoleUsersManagement() {
             const data = await apiFetch(`/users/${id}`);
             setEditUserForm({
                 name:          data.name,
-                department_id: data.department_id ?? null,
+                department_id: data.department?.id ?? data.department_id ?? null,
             });
             setIsEditUserModalOpen(true);
         } catch (err) {
@@ -333,17 +333,17 @@ export default function RoleUsersManagement() {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             <button 
                                                                 onClick={() => openEditUserModal(user.id)} 
-                                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors"
                                                                 title="Edit User"
                                                             >
                                                                 <Edit2 size={16} />
                                                             </button>
                                                             <button 
                                                                 onClick={() => handleDeleteUser(user.id)} 
-                                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                className="p-2 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors"
                                                                 title="Remove User"
                                                             >
                                                                 <Trash2 size={16} />

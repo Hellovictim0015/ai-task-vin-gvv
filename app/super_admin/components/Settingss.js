@@ -6,6 +6,7 @@ import {
   AlertCircle, Lock, CalendarDays, Building2, RefreshCw 
 } from 'lucide-react';
 import { BASE_URL } from '@/lib/api';
+import DepartmentManager from './DepartmentManager';
 export default function AccountSettings() {
   // --- STATE ---
   const [profile, setProfile] = useState(null);
@@ -324,6 +325,9 @@ export default function AccountSettings() {
           </div>
 
         </div>
+
+        {/* DEPARTMENT MANAGEMENT (Super Admin) */}
+        <DepartmentManager />
       </div>
     </div>
   );

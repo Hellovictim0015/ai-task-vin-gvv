@@ -9,6 +9,7 @@ export function serializeUser(user: AnyRecord) {
     phone: user.phone,
     email: user.email,
     role: user.role,
+    department_id: user.department_id ?? null,
     department: user.department ? { id: user.department.id, name: user.department.name } : null,
     is_active: user.is_active,
     created_at: user.created_at

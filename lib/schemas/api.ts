@@ -28,7 +28,8 @@ export const updateUserSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().nullable().optional(),
   department_id: z.number().int().nullable().optional(),
-  is_active: z.boolean().optional()
+  is_active: z.boolean().optional(),
+  role: userRole.optional()
 });
 
 export const createProjectSchema = z.object({
@@ -90,6 +91,14 @@ export const eodCreateSchema = z.object({
   delay_reason: z.string().nullable().optional(),
   tomorrow_plan: z.string().nullable().optional(),
   support_required: z.string().nullable().optional()
+});
+
+export const adminResetPasswordSchema = z.object({
+  new_password: z.string().min(6, "Password must be at least 6 characters").max(100, "Password is too long")
+});
+
+export const departmentSchema = z.object({
+  name: z.string().trim().min(2, "Department name must be at least 2 characters").max(150, "Department name is too long")
 });
 
 export const broadcastSchema = z.object({

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Search, Shield, Plus, Edit2, ChevronRight,
-    Settings, Trash2, X, Building2, Users
+    Settings, Trash2, X, Building2, Users, KeyRound, Eye, EyeOff
 } from 'lucide-react';
 import { BASE_URL } from '@/lib/api';
 
@@ -137,6 +137,14 @@ export default function RoleUsersManagement() {
     };
     const [editUserForm, setEditUserForm] = useState(defaultEditForm);
 
+    // ── Reset password (Super Admin) ──
+    const [passwordTarget, setPasswordTarget] = useState(null); // user object
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [passwordError, setPasswordError] = useState('');
+    const [passwordSuccess, setPasswordSuccess] = useState('');
+
     // ── Initial load ─────────────────────────────────────────────────────────
     useEffect(() => { fetchUsers(); }, []);
 
@@ -191,7 +199,9 @@ export default function RoleUsersManagement() {
             const data = await apiFetch(`/users/${id}`);
             setEditUserForm({
                 name:          data.name,
-                department_id: data.department_id ?? null,
+                department_id: data.department?.id ?? data.department_id ?? null,
+                role:          data.role ?? '',
+                original_role: data.role ?? '',
             });
             setIsEditUserModalOpen(true);
         } catch (err) {
@@ -204,12 +214,17 @@ export default function RoleUsersManagement() {
         e.preventDefault();
         setIsSubmitting(true);
         try {
+            const payload = {
+                name:          editUserForm.name,
+                department_id: editUserForm.department_id,
+            };
+            // Only send role when it actually changed (Super Admin's own role can't be changed)
+            if (editUserForm.role && editUserForm.role !== editUserForm.original_role) {
+                payload.role = editUserForm.role;
+            }
             await apiFetch(`/users/${selectedUserId}`, {
                 method: 'PUT',
-                body: JSON.stringify({
-                    name:          editUserForm.name,
-                    department_id: editUserForm.department_id,
-                }),
+                body: JSON.stringify(payload),
             });
             setIsEditUserModalOpen(false);
             await fetchUsers();
@@ -228,6 +243,49 @@ export default function RoleUsersManagement() {
             await fetchUsers();
         } catch (err) {
             alert('Error deleting user: ' + err.message);
+        }
+    };
+
+    // RESET PASSWORD (Super Admin)
+    const openPasswordModal = (user) => {
+        setPasswordTarget(user);
+        setNewPassword('');
+        setConfirmPassword('');
+        setShowNewPassword(false);
+        setPasswordError('');
+        setPasswordSuccess('');
+    };
+
+    const closePasswordModal = () => {
+        if (isSubmitting) return;
+        setPasswordTarget(null);
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        setPasswordError('');
+        if (newPassword.length < 6) {
+            setPasswordError('Password must be at least 6 characters.');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setPasswordError('Passwords do not match.');
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const res = await apiFetch(`/users/${passwordTarget.id}/reset-password`, {
+                method: 'POST',
+                body: JSON.stringify({ new_password: newPassword }),
+            });
+            setPasswordSuccess(res?.message || 'Password updated.');
+            setNewPassword('');
+            setConfirmPassword('');
+            setTimeout(() => setPasswordTarget(null), 1500);
+        } catch (err) {
+            setPasswordError(err.message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -333,17 +391,24 @@ export default function RoleUsersManagement() {
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="flex items-center justify-end gap-1.5">
                                                             <button 
                                                                 onClick={() => openEditUserModal(user.id)} 
-                                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors"
                                                                 title="Edit User"
                                                             >
                                                                 <Edit2 size={16} />
                                                             </button>
+                                                            <button
+                                                                onClick={() => openPasswordModal(user)}
+                                                                className="p-2 text-amber-600 bg-amber-50 hover:bg-amber-100 border border-amber-100 rounded-lg transition-colors"
+                                                                title="Change Password"
+                                                            >
+                                                                <KeyRound size={16} />
+                                                            </button>
                                                             <button 
                                                                 onClick={() => handleDeleteUser(user.id)} 
-                                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                className="p-2 text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-colors"
                                                                 title="Remove User"
                                                             >
                                                                 <Trash2 size={16} />
@@ -507,6 +572,43 @@ export default function RoleUsersManagement() {
                                 onChange={val => setEditUserForm({ ...editUserForm, department_id: val })}
                             />
 
+                            {/* ── ROLE DROPDOWN ── */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">
+                                    System Role
+                                </label>
+                                {editUserForm.original_role === 'super_admin' ? (
+                                    <div className="w-full border border-gray-200 p-2.5 rounded-xl bg-gray-50 text-sm text-gray-600">
+                                        Super Admin <span className="text-xs text-gray-400">(cannot be changed)</span>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <select
+                                            required
+                                            value={editUserForm.role || ''}
+                                            onChange={e => setEditUserForm({ ...editUserForm, role: e.target.value })}
+                                            className="w-full border border-gray-200 p-2.5 pr-10 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 bg-white text-sm appearance-none transition-all"
+                                        >
+                                            <option value="" disabled>Select a role</option>
+                                            <option value="admin">Admin Manager</option>
+                                            <option value="project_head">Project Head</option>
+                                            <option value="department_head">Department Head</option>
+                                            <option value="team_member">Team Member</option>
+                                        </select>
+                                        <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
+                                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                )}
+                                {editUserForm.role && editUserForm.original_role && editUserForm.role !== editUserForm.original_role && (
+                                    <p className="text-xs text-amber-600 font-medium mt-1.5">
+                                        Role will change from {editUserForm.original_role.replace(/_/g, ' ')} to {editUserForm.role.replace(/_/g, ' ')}. The user must log in again to see the new dashboard.
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="pt-4 mt-6 border-t border-gray-100 flex justify-end gap-3">
                                 <button
                                     type="button"
@@ -525,6 +627,99 @@ export default function RoleUsersManagement() {
                                             Saving...
                                         </>
                                     ) : 'Save Changes'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* ── RESET PASSWORD MODAL (Super Admin) ─────────────────────────── */}
+            {passwordTarget && (
+                <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={closePasswordModal}>
+                    <div className="bg-white p-6 sm:p-8 rounded-2xl w-full max-w-md relative shadow-xl" onClick={e => e.stopPropagation()}>
+                        <button
+                            onClick={closePasswordModal}
+                            className="absolute top-5 right-5 text-gray-400 hover:text-gray-700 bg-gray-50 hover:bg-gray-100 p-1.5 rounded-full transition-colors"
+                        >
+                            <X size={18} />
+                        </button>
+                        <div className="mb-6 flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                                <KeyRound size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-900">Change Password</h2>
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Set a new password for <span className="font-semibold text-gray-800">{passwordTarget.name}</span> ({passwordTarget.phone}).
+                                </p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleResetPassword} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">New Password</label>
+                                <div className="relative">
+                                    <input
+                                        required autoFocus
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        placeholder="Minimum 6 characters"
+                                        autoComplete="new-password"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                        className="w-full border border-gray-200 p-2.5 pr-10 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm transition-all"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewPassword(s => !s)}
+                                        className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+                                        title={showNewPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wider">Confirm Password</label>
+                                <input
+                                    required
+                                    type={showNewPassword ? 'text' : 'password'}
+                                    placeholder="Retype new password"
+                                    autoComplete="new-password"
+                                    value={confirmPassword}
+                                    onChange={e => setConfirmPassword(e.target.value)}
+                                    className="w-full border border-gray-200 p-2.5 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-sm transition-all"
+                                />
+                                {confirmPassword && newPassword !== confirmPassword && (
+                                    <p className="text-xs text-red-500 font-medium mt-1.5">Passwords do not match</p>
+                                )}
+                            </div>
+
+                            {passwordError && (
+                                <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm">{passwordError}</div>
+                            )}
+                            {passwordSuccess && (
+                                <div className="p-3 rounded-xl bg-green-50 border border-green-100 text-green-700 text-sm">{passwordSuccess}</div>
+                            )}
+
+                            <div className="pt-4 mt-6 border-t border-gray-100 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={closePasswordModal}
+                                    className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit" disabled={isSubmitting || !!passwordSuccess}
+                                    className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl transition-all text-sm font-medium shadow-sm hover:shadow-md disabled:opacity-70 flex items-center gap-2"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Updating...
+                                        </>
+                                    ) : 'Update Password'}
                                 </button>
                             </div>
                         </form>
