@@ -42,21 +42,20 @@ export default function LoginPage() {
       localStorage.setItem('user', JSON.stringify(response.user));
 
       // 2. Save Token in Cookies for Next.js Middleware (1 day expiration)
-      document.cookie = `access_token=${token}; path=/; max-age=86400; secure; samesite=strict`;
-      document.cookie = `user_role=${role}; path=/; max-age=86400; secure; samesite=strict`;
+      // "secure" cookies are dropped by the browser on plain http:// (e.g. http://VPS_IP:3066),
+      // so only add it when the site is actually served over HTTPS.
+      const secureFlag = window.location.protocol === 'https:' ? '; secure' : '';
+      document.cookie = `access_token=${token}; path=/; max-age=86400; samesite=lax${secureFlag}`;
+      document.cookie = `user_role=${role}; path=/; max-age=86400; samesite=lax${secureFlag}`;
 
       // 3. Role-based routing (Matching your middleware structure)
-      if (role === 'super_admin') {
-        router.push('/super_admin');
-      } else if (role === 'admin') {
-        router.push('/admin');
-      } else if (role === 'department_head') {
-        router.push('/department_head');
-      } 
-      
-      else {
-        router.push('/TEAM_MEMBER');
-      }
+      const dashboards = {
+        super_admin: '/super_admin',
+        admin: '/admin',
+        project_head: '/project_head',
+        department_head: '/department_head',
+      };
+      router.replace(dashboards[role] ?? '/TEAM_MEMBER');
       
     } catch (err) {
       setError(err.message);
@@ -74,7 +73,8 @@ export default function LoginPage() {
           src="/ChatGPT Image May 24, 2026, 03_16_59 PM.png"
           alt="TaskFlow Dashboard Platform"
           fill
-          className="object-cover object-center"
+          sizes="50vw"
+          className="object-cover object-left"
           priority
         />
       </div>
